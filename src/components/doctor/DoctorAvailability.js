@@ -1,21 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { doctorAPI } from '../../services/api';
+import { useTranslation } from 'react-i18next';
 import LoadingSpinner from '../common/LoadingSpinner';
+import toast from 'react-hot-toast';
 
 const DoctorAvailability = () => {
   const [availability, setAvailability] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  
+  const { t, i18n } = useTranslation();
+  const isRTL = i18n.language === 'ar';
 
   const days = [
-    { id: 'sunday', name: 'الأحد' },
-    { id: 'monday', name: 'الإثنين' },
-    { id: 'tuesday', name: 'الثلاثاء' },
-    { id: 'wednesday', name: 'الأربعاء' },
-    { id: 'thursday', name: 'الخميس' },
-    { id: 'friday', name: 'الجمعة' },
-    { id: 'saturday', name: 'السبت' },
+    { id: 'sunday', name: t('sunday') },
+    { id: 'monday', name: t('monday') },
+    { id: 'tuesday', name: t('tuesday') },
+    { id: 'wednesday', name: t('wednesday') },
+    { id: 'thursday', name: t('thursday') },
+    { id: 'friday', name: t('friday') },
+    { id: 'saturday', name: t('saturday') },
   ];
 
   const timeSlots = [
@@ -35,6 +40,7 @@ const DoctorAvailability = () => {
       setAvailability(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error('Error fetching availability:', error);
+      toast.error(t('error_loading_availability'));
       setAvailability([]);
     } finally {
       setLoading(false);
@@ -69,7 +75,7 @@ const DoctorAvailability = () => {
 
   const handleSaveAvailability = async () => {
     if (availability.length === 0) {
-      setMessage('يرجى اختيار يوم واحد على الأقل');
+      toast.error(t('choose_at_least_one_day'));
       return;
     }
 
@@ -78,7 +84,7 @@ const DoctorAvailability = () => {
     );
 
     if (daysWithoutSlots.length > 0) {
-      setMessage('يرجى اختيار مواعيد للأيام المحددة');
+      toast.error(t('choose_times_for_days'));
       return;
     }
 
@@ -87,11 +93,11 @@ const DoctorAvailability = () => {
 
     try {
       const response = await doctorAPI.updateAvailability(availability);
-      setMessage('تم حفظ المواعيد المتاحة بنجاح');
+      toast.success(t('success_saved'));
       setAvailability(response.data.availability || []);
     } catch (error) {
       console.error('Error saving availability:', error);
-      setMessage(error.response?.data?.message || 'فشل في حفظ المواعيد المتاحة');
+      toast.error(error.response?.data?.message || t('error_saving_availability'));
     } finally {
       setSaving(false);
     }
@@ -119,9 +125,9 @@ const DoctorAvailability = () => {
   }
 
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-3">
-        <h2 className="text-2xl font-bold text-gray-900">المواعيد المتاحة</h2>
+    <div dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className={`flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-3 ${isRTL ? 'text-right' : 'text-left'}`}>
+        <h2 className="text-2xl font-bold text-gray-900">{t('availability')}</h2>
       </div>
 
       {message && (
@@ -136,11 +142,11 @@ const DoctorAvailability = () => {
 
       <div className="card">
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">
-            تعيين الأيام والأوقات المتاحة
+          <h3 className={`text-lg font-semibold text-gray-900 mb-3 ${isRTL ? 'text-right' : 'text-left'}`}>
+            {t('set_available_times')}
           </h3>
-          <p className="text-gray-600 text-sm">
-            اختر الأيام والأوقات التي تكون متاحاً فيها لاستقبال المرضى
+          <p className={`text-gray-600 text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+            {t('available_times_description')}
           </p>
         </div>
 
@@ -166,7 +172,7 @@ const DoctorAvailability = () => {
                 <div className="font-medium">{day.name}</div>
                 {isActive && (
                   <div className="text-xs text-primary-600 mt-1">
-                    {slotsCount} موعد
+                    {slotsCount} {t('slots_count')}
                   </div>
                 )}
               </button>
@@ -181,15 +187,15 @@ const DoctorAvailability = () => {
 
             return (
               <div key={day.id} className="border rounded-lg p-3 sm:p-6">
-                <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center mb-4">
+                <div className={`flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center mb-4 ${isRTL ? 'text-right' : 'text-left'}`}>
                   <h4 className="text-lg font-semibold text-gray-900">
-                    أوقات {day.name}
+                    {t('times_for')} {day.name}
                   </h4>
                   <button
                     onClick={() => toggleDay(day.id)}
                     className="text-red-600 hover:text-red-800 text-sm font-medium self-end sm:self-auto"
                   >
-                    إزالة اليوم
+                    {t('remove_day')}
                   </button>
                 </div>
                 
@@ -227,7 +233,7 @@ const DoctorAvailability = () => {
                 {getDayAvailability(day.id) &&
                   getDayAvailability(day.id).slots.length === 0 && (
                   <p className="text-gray-500 text-sm mt-3 text-center">
-                    لم يتم اختيار أي أوقات لهذا اليوم
+                    {t('no_times_selected')}
                   </p>
                 )}
               </div>
@@ -239,23 +245,23 @@ const DoctorAvailability = () => {
           <div className="text-center py-8">
             <div className="text-4xl mb-3">⏰</div>
             <p className="text-gray-600 mb-4">
-              لم يتم اختيار أي أيام عمل بعد
+              {t('no_working_days')}
             </p>
             <p className="text-sm text-gray-500">
-              اختر الأيام من الأعلى ثم حدد الأوقات المتاحة
+              {t('choose_days_then_times')}
             </p>
           </div>
         )}
 
         {/* زر الحفظ */}
         {availability.length > 0 && (
-          <div className="flex flex-col items-stretch sm:flex-row sm:justify-end pt-6 mt-6 border-t gap-3">
+          <div className={`flex flex-col items-stretch sm:flex-row sm:justify-end pt-6 mt-6 border-t gap-3 ${isRTL ? 'sm:justify-start' : 'sm:justify-end'}`}>
             <button
               onClick={handleSaveAvailability}
               disabled={saving}
               className="btn-primary w-full sm:w-auto"
             >
-              {saving ? <LoadingSpinner size="sm" /> : 'حفظ المواعيد المتاحة'}
+              {saving ? <LoadingSpinner size="sm" /> : t('save_available_times')}
             </button>
           </div>
         )}
@@ -263,13 +269,13 @@ const DoctorAvailability = () => {
 
       {/* نصائح */}
       <div className="card mt-6 bg-blue-50 border-blue-200">
-        <h3 className="text-lg font-semibold text-blue-900 mb-3">نصائح مهمة</h3>
-        <ul className="text-blue-800 text-sm space-y-2">
-          <li>• اختر الأيام أولاً من بين الأيام بالأعلى</li>
-          <li>• لكل يوم، اختر الأوقات المتاحة من القائمة</li>
-          <li>• يمكنك إزالة يوم بالضغط على "إزالة اليوم"</li>
-          <li>• يجب حفظ التغييرات بعد الانتهاء</li>
-          <li>• المرضى سيشاهدون فقط الأوقات المحددة</li>
+        <h3 className={`text-lg font-semibold text-blue-900 mb-3 ${isRTL ? 'text-right' : 'text-left'}`}>{t('important_tips')}</h3>
+        <ul className={`text-blue-800 text-sm space-y-2 ${isRTL ? 'text-right' : 'text-left'}`}>
+          <li>• {t('choose_days_first')}</li>
+          <li>• {t('choose_times_per_day')}</li>
+          <li>• {t('remove_day_by_button')}</li>
+          <li>• {t('save_changes_after_finish')}</li>
+          <li>• {t('patients_see_only_selected')}</li>
         </ul>
       </div>
     </div>

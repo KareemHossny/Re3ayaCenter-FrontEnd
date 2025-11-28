@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { doctorAPI } from '../../services/api';
+import { useTranslation } from 'react-i18next';
 import LoadingSpinner from '../common/LoadingSpinner';
 import CompleteAppointment from './CompleteAppointment';
+import toast from 'react-hot-toast';
 
 const DoctorAppointments = () => {
   const [appointments, setAppointments] = useState([]);
@@ -11,6 +13,9 @@ const DoctorAppointments = () => {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showCompleteForm, setShowCompleteForm] = useState(false);
+  
+  const { t, i18n } = useTranslation();
+  const isRTL = i18n.language === 'ar';
 
   useEffect(() => {
     fetchAppointments();
@@ -30,24 +35,29 @@ const DoctorAppointments = () => {
         params.status = 'scheduled';
       }
       const response = await doctorAPI.getAppointments(params);
-      setAppointments(response.data);
+      
+      // التأكد من أن appointments مصفوفة
+      const appointmentsData = response.data.data || response.data || [];
+      setAppointments(appointmentsData);
     } catch (error) {
       console.error('Error fetching appointments:', error);
+      toast.error(t('error_loading_appointments'));
     } finally {
       setLoading(false);
     }
   };
 
   const handleCancelAppointment = async (appointmentId) => {
-    const reason = prompt('يرجى كتابة سبب الإلغاء:');
+    const reason = prompt(t('enter_cancellation_reason'));
     if (!reason) return;
+    
     setCancelling(appointmentId);
     try {
       await doctorAPI.cancelAppointment(appointmentId, reason);
-      alert('تم إلغاء الموعد بنجاح');
+      toast.success(t('success_deleted'));
       fetchAppointments();
     } catch (error) {
-      alert(error.response?.data?.message || 'فشل في إلغاء الموعد');
+      toast.error(error.response?.data?.message || t('error_updating_profile'));
     } finally {
       setCancelling(null);
     }
@@ -80,11 +90,11 @@ const DoctorAppointments = () => {
   const getStatusText = (status) => {
     switch (status) {
       case 'scheduled':
-        return 'مجدول';
+        return t('scheduled_appointments');
       case 'completed':
-        return 'مكتمل';
+        return t('completed_appointments');
       case 'cancelled':
-        return 'ملغي';
+        return t('cancelled_appointments');
       default:
         return status;
     }
@@ -92,7 +102,7 @@ const DoctorAppointments = () => {
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('ar-EG', {
+    return date.toLocaleDateString(i18n.language === 'ar' ? 'ar-EG' : 'en-US', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -114,10 +124,10 @@ const DoctorAppointments = () => {
   }
 
   return (
-    <div className="px-2 py-2 sm:px-4 sm:py-4 md:px-8">
+    <div className="px-2 py-2 sm:px-4 sm:py-4 md:px-8" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-2">
-        <h2 className="text-2xl font-bold text-gray-900 text-center sm:text-right">مواعيد المرضى</h2>
+      <div className={`flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-2 ${isRTL ? 'text-right' : 'text-left'}`}>
+        <h2 className="text-2xl font-bold text-gray-900 text-center sm:text-right">{t('patient_appointments')}</h2>
       </div>
 
       {/* الفلتر والتاريخ */}
@@ -126,9 +136,9 @@ const DoctorAppointments = () => {
           {/* Filter buttons - wrapped horizontally for small screens */}
           <div className="flex flex-col xs:flex-row xs:flex-wrap gap-2 flex-1 w-full">
             {[
-              { value: 'today', label: 'مواعيد اليوم' },
-              { value: 'upcoming', label: 'القادمة' },
-              { value: 'all', label: 'جميع المواعيد' },
+              { value: 'today', label: t('today_appointments') },
+              { value: 'upcoming', label: t('upcoming_appointments') },
+              { value: 'all', label: t('all_appointments') },
             ].map((option) => (
               <button
                 key={option.value}
@@ -169,16 +179,40 @@ const DoctorAppointments = () => {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
               {/* Appointment details */}
               <div className="flex-1 min-w-0">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-3 gap-2">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 truncate">
-                      {appointment.patient?.name}
-                    </h3>
-                    <p className="text-primary-600 truncate">
-                      {appointment.specialization?.name}
-                    </p>
+                <div className={`flex flex-col sm:flex-row sm:items-start sm:justify-between mb-3 gap-2 ${isRTL ? 'text-right' : 'text-left'}`}>
+                  <div className={`flex items-start gap-3 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
+                    {/* صورة المريض (اختيارية) */}
+                    {appointment.patient?.profileImage && (
+                      <img 
+                        src={appointment.patient.profileImage} 
+                        alt={appointment.patient.name}
+                        className="w-12 h-12 rounded-full object-cover"
+                      />
+                    )}
+                    <div className={isRTL ? 'text-right' : 'text-left'}>
+                      <h3 className="text-lg font-semibold text-gray-900 truncate">
+                        {appointment.patient?.name}
+                      </h3>
+                      <div className={`flex items-center gap-2 mt-1 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
+                        <div className="flex items-center gap-1 text-primary-600 font-medium">
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                          </svg>
+                          <span>{appointment.patient?.age} {t('years')}</span>
+                        </div>
+                        {appointment.patient?.phone && (
+                          <>
+                            <span className="text-gray-300">•</span>
+                            <span className="text-gray-600 text-sm">
+                              {appointment.patient.phone}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-3 space-x-reverse mt-2 sm:mt-0">
+                  
+                  <div className={`flex items-center space-x-3 space-x-reverse mt-2 sm:mt-0 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(appointment.status)}`}>
                       {getStatusText(appointment.status)}
                     </span>
@@ -190,31 +224,31 @@ const DoctorAppointments = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600 w-full">
+                <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600 w-full ${isRTL ? 'text-right' : 'text-left'}`}>
                   <div>
-                    <span className="font-medium">التاريخ:</span>{' '}
+                    <span className="font-medium">{t('appointment_date')}</span>{' '}
                     {formatDate(appointment.date)}
                   </div>
                   <div>
-                    <span className="font-medium">الوقت:</span> {appointment.time}
+                    <span className="font-medium">{t('appointment_time')}</span> {appointment.time}
                   </div>
                   <div>
-                    <span className="font-medium">البريد الإلكتروني:</span>{' '}
+                    <span className="font-medium">{t('patient_email')}</span>{' '}
                     <span className="break-all">{appointment.patient?.email}</span>
                   </div>
                   <div>
-                    <span className="font-medium">الهاتف:</span>{' '}
-                    {appointment.patient?.phone || 'غير متوفر'}
+                    <span className="font-medium">{t('specialization')}</span>{' '}
+                    {appointment.specialization?.name}
                   </div>
                   {appointment.notes && (
                     <div className="md:col-span-2">
-                      <span className="font-medium">ملاحظات المريض:</span>{' '}
+                      <span className="font-medium">{t('patient_notes')}</span>{' '}
                       {appointment.notes}
                     </div>
                   )}
                   {appointment.cancellationReason && (
                     <div className="md:col-span-2">
-                      <span className="font-medium">سبب الإلغاء:</span>{' '}
+                      <span className="font-medium">{t('cancellation_reason')}</span>{' '}
                       {appointment.cancellationReason}
                     </div>
                   )}
@@ -223,17 +257,17 @@ const DoctorAppointments = () => {
                 {/* Prescription (if any) */}
                 {appointment.status === 'completed' && appointment.prescription && (
                   <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg overflow-x-auto">
-                    <h4 className="font-semibold text-green-900 mb-2">الروشتة الطبية:</h4>
+                    <h4 className="font-semibold text-green-900 mb-2">{t('prescription_medical')}</h4>
                     <p className="text-green-800 whitespace-pre-wrap break-all">{appointment.prescription}</p>
                     {appointment.notes && (
                       <div className="mt-2">
-                        <h5 className="font-medium text-green-900 mb-1">ملاحظات إضافية:</h5>
+                        <h5 className="font-medium text-green-900 mb-1">{t('additional_notes_prescription')}</h5>
                         <p className="text-green-700">{appointment.notes}</p>
                       </div>
                     )}
                     {appointment.completedAt && (
                       <p className="text-xs text-green-600 mt-2">
-                        تم الإكمال في: {new Date(appointment.completedAt).toLocaleString('ar-EG')}
+                        {t('completed_at')} {new Date(appointment.completedAt).toLocaleString(i18n.language === 'ar' ? 'ar-EG' : 'en-US')}
                       </p>
                     )}
                   </div>
@@ -248,7 +282,7 @@ const DoctorAppointments = () => {
                       onClick={() => handleCompleteAppointment(appointment)}
                       className="w-full lg:w-auto bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                     >
-                      تمت الزيارة
+                      {t('visit_completed')}
                     </button>
                     <button
                       onClick={() => handleCancelAppointment(appointment._id)}
@@ -258,7 +292,7 @@ const DoctorAppointments = () => {
                       {cancelling === appointment._id ? (
                         <LoadingSpinner size="sm" />
                       ) : (
-                        'إلغاء الموعد'
+                        t('cancel_appointment')
                       )}
                     </button>
                   </>
@@ -269,7 +303,7 @@ const DoctorAppointments = () => {
                     onClick={() => handleCompleteAppointment(appointment)}
                     className="w-full lg:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                   >
-                    عرض/تعديل الروشتة
+                    {t('view_edit_prescription')}
                   </button>
                 )}
               </div>
@@ -282,14 +316,14 @@ const DoctorAppointments = () => {
         <div className="text-center py-12">
           <div className="text-6xl mb-4">📅</div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">
-            لا توجد مواعيد
+            {t('no_appointments')}
           </h3>
           <p className="text-gray-600">
             {filter === 'today'
-              ? 'لا توجد مواعيد لليوم.'
+              ? t('no_appointments_today')
               : selectedDate
-              ? `لا توجد مواعيد في التاريخ المحدد.`
-              : 'لا توجد مواعيد لعرضها.'}
+              ? t('no_appointments_date')
+              : t('no_appointments_display')}
           </p>
         </div>
       )}

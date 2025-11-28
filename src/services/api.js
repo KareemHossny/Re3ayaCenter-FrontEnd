@@ -33,7 +33,10 @@ api.interceptors.response.use(
 export const authAPI = {
   login: (credentials) => api.post('/auth/login', credentials),
   register: (userData) => api.post('/auth/register', userData),
+  googleLogin: (token) => api.post('/auth/google', token),
   getMe: () => api.get('/auth/me'),
+  updateProfile: (profileData) => api.put('/auth/profile', profileData),
+  completeProfile: (profileData) => api.patch('/auth/complete-profile', profileData),
 };
 
 export const adminAPI = {
@@ -45,18 +48,15 @@ export const adminAPI = {
 
 export const doctorAPI = {
   getProfile: () => api.get('/doctor/profile'),
-  updateProfile: (data) => api.put('/doctor/profile', data),
+  updateProfile: (data) => api.put('/doctor/profile', data), // تستخدم للتحديث الشامل
   getAppointments: (params) => api.get('/doctor/appointments', { params }),
   cancelAppointment: (appointmentId, reason) => 
     api.put(`/doctor/appointments/${appointmentId}/cancel`, { cancellationReason: reason }),
   getStats: () => api.get('/doctor/stats'),
   getAvailability: () => api.get('/doctor/availability'),
   updateAvailability: (availability) => api.put('/doctor/availability', { availability }),
-   updateSpecialization: (specializationId) => 
-    api.put('/doctor/specialization', { specialization: specializationId }),
-     getAppointmentDetails: (appointmentId) => 
+  getAppointmentDetails: (appointmentId) => 
     api.get(`/doctor/appointments/${appointmentId}`),
-  
   completeAppointment: (appointmentId, data) => 
     api.put(`/doctor/appointments/${appointmentId}/complete`, data),
 };
@@ -73,10 +73,16 @@ export const patientAPI = {
   getStats: () => api.get('/patient/stats'),
 };
 
+// إضافة الـ APIs الجديدة
 export const specializationAPI = {
   getSpecializations: () => api.get('/specializations'),
   updateSpecialization: (specializationId, data) => api.put(`/specializations/${specializationId}`, data),
   deleteSpecialization: (specializationId) => api.delete(`/specializations/${specializationId}`),
+  uploadSpecializationImage: (specializationId, formData) => 
+    api.post(`/specializations/${specializationId}/image`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+  deleteSpecializationImage: (specializationId) => api.delete(`/specializations/${specializationId}/image`),
 };
 
 export const uploadAPI = {
