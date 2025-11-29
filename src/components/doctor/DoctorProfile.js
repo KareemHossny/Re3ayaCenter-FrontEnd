@@ -210,7 +210,7 @@ const DoctorProfile = () => {
     }
     
     // إذا كان مساراً نسبياً، أضف الـ base URL
-    const baseUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
+    const baseUrl = 'https://re3aya-backend.vercel.app' || 'http://localhost:5000';
     
     // تنظيف المسار - إزالة الـ / الزائدة
     const cleanPath = imagePath.startsWith('/') ? imagePath.substring(1) : imagePath;
