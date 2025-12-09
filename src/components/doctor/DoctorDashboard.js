@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import DoctorProfile from './DoctorProfile';
 import DoctorAppointments from './DoctorAppointments';
-import DoctorAvailability from './DoctorAvailability';
+import DoctorSchedule from './DoctorSchedule';
 import DoctorStats from './DoctorStats';
 import { CalendarIcon, ClockIcon, UserIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 
@@ -28,7 +28,7 @@ const DoctorDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className={`flex flex-col md:flex-row md:justify-between md:items-center py-6 gap-4 ${isRTL ? 'text-right' : 'text-left'}`}>
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+              <h1 className="text-2xl sm:text-3xl font-bold text-primary-900">
                 {t('doctor_dashboard')}
               </h1>
               <p className="text-gray-600 mt-1 text-sm sm:text-base">
@@ -67,7 +67,7 @@ const DoctorDashboard = () => {
       <div className="max-w-7xl mx-auto py-3 sm:py-6 px-2 sm:px-6 lg:px-8">
         <div className="px-0 md:px-4 py-4 sm:py-6">
           {activeTab === 'appointments' && <DoctorAppointments />}
-          {activeTab === 'availability' && <DoctorAvailability />}
+          {activeTab === 'availability' && <DoctorSchedule />}
           {activeTab === 'profile' && <DoctorProfile />}
           {activeTab === 'stats' && <DoctorStats />}
         </div>

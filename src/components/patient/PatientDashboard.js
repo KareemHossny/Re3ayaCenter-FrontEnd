@@ -27,7 +27,7 @@ const PatientDashboard = () => {
           {/* Responsive flex direction for header */}
           <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center py-6 gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
             <div className={`flex flex-col ${isRTL ? 'text-right' : 'text-left'}`}>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+              <h1 className="text-2xl sm:text-3xl font-bold text-primary-900">
                 {t('patient_dashboard')}
               </h1>
               <p className="text-gray-600 mt-1 text-base sm:text-lg">

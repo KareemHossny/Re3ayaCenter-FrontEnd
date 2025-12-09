@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { specializationAPI, adminAPI } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import LoadingSpinner from '../common/LoadingSpinner';
@@ -16,7 +16,10 @@ const SpecializationManagement = () => {
   const [submitting, setSubmitting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
-  
+
+  // Add ref to scroll to form
+  const formRef = useRef(null);
+
   const { t, i18n } = useTranslation();
   const isRTL = i18n.language === 'ar';
 
@@ -133,6 +136,7 @@ const SpecializationManagement = () => {
     }
   };
 
+  // Editing: scroll to form after showing it
   const handleEdit = (specialization) => {
     setEditing(specialization);
     setFormData({
@@ -141,6 +145,14 @@ const SpecializationManagement = () => {
     });
     setSelectedImage(null);
     setShowForm(true);
+
+    // Scroll to the form area smoothly after render
+    // setTimeout allows the DOM to update first
+    setTimeout(() => {
+      if (formRef.current) {
+        formRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
   };
 
   const handleDelete = async (specializationId) => {
@@ -211,7 +223,15 @@ const SpecializationManagement = () => {
       <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3 ${isRTL ? 'text-right' : 'text-left'}`}>
         <h2 className="text-2xl font-bold text-gray-900">{t('specialization_management')}</h2>
         <button
-          onClick={() => setShowForm(true)}
+          onClick={() => {
+            setShowForm(true);
+            // Also scroll to form when adding new
+            setTimeout(() => {
+              if (formRef.current) {
+                formRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }, 100);
+          }}
           className="btn-primary w-full sm:w-auto"
         >
           + {t('add_new_specialization')}
@@ -220,7 +240,10 @@ const SpecializationManagement = () => {
 
       {/* نموذج إضافة/تعديل التخصص */}
       {showForm && (
-        <div className="card mb-6 px-3 py-4 max-w-xl mx-auto shadow-lg">
+        <div
+          className="card mb-6 px-3 py-4 max-w-xl mx-auto shadow-lg"
+          ref={formRef}
+        >
           <h3 className={`text-lg font-semibold text-gray-900 mb-4 text-center ${isRTL ? 'text-right' : 'text-left'}`}>
             {editing ? t('edit_specialization') : t('add_new_specialization')}
           </h3>
@@ -390,7 +413,14 @@ const SpecializationManagement = () => {
             {t('no_specializations_description')}
           </p>
           <button
-            onClick={() => setShowForm(true)}
+            onClick={() => {
+              setShowForm(true);
+              setTimeout(() => {
+                if (formRef.current) {
+                  formRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }, 100);
+            }}
             className="btn-primary mt-2"
           >
             {t('add_first_specialization')}

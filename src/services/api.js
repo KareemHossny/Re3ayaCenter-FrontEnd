@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = "https://re3aya-backend.vercel.app/api" ||'http://localhost:5000/api';
+const BASE_URL = 'https://re3aya-backend.vercel.app/api';
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -53,23 +53,43 @@ export const doctorAPI = {
   cancelAppointment: (appointmentId, reason) => 
     api.put(`/doctor/appointments/${appointmentId}/cancel`, { cancellationReason: reason }),
   getStats: () => api.get('/doctor/stats'),
-  getAvailability: () => api.get('/doctor/availability'),
-  updateAvailability: (availability) => api.put('/doctor/availability', { availability }),
   getAppointmentDetails: (appointmentId) => 
     api.get(`/doctor/appointments/${appointmentId}`),
   completeAppointment: (appointmentId, data) => 
     api.put(`/doctor/appointments/${appointmentId}/complete`, data),
+  // إدارة الجدول الزمني
+  getSchedule: (params) => api.get('/doctor/schedule', { params }),
+  
+saveSchedule: (data) => {
+    console.log('🚀 [API] إرسال بيانات الجدول إلى السيرفر:');
+    console.log('- البيانات الأصلية:', data);
+    console.log('- availableTimes:', data.availableTimes);
+    console.log('- النوع:', typeof data.availableTimes);
+    console.log('- هل مصفوفة؟', Array.isArray(data.availableTimes));
+    
+    // 🔴 **لا تقم بأي معالجة للبيانات هنا!**
+    // فقط أرسلها كما هي
+    const requestData = {
+      date: data.date,
+      isWorkingDay: data.isWorkingDay,
+      availableTimes: data.availableTimes  // أرسلها كما هي
+    };
+    
+    console.log('📤 البيانات المرسلة بدون تعديل:', JSON.stringify(requestData, null, 2));
+    
+    return api.post('/doctor/schedule', requestData);
+  },
 };
 
 export const patientAPI = {
   getDoctors: (params) => api.get('/patient/doctors', { params }),
   getDoctorDetails: (doctorId) => api.get(`/patient/doctors/${doctorId}`),
-  getAvailableSlots: (doctorId, date) => 
-    api.get(`/patient/available-slots/${doctorId}?date=${date}`),
   bookAppointment: (data) => api.post('/patient/appointments', data),
   getAppointments: (params) => api.get('/patient/appointments', { params }),
   cancelAppointment: (appointmentId, reason) => 
     api.put(`/patient/appointments/${appointmentId}/cancel`, { cancellationReason: reason }),
+  getAvailableSlots: (doctorId, date) => 
+    api.get(`/patient/available-slots/${doctorId}?date=${date}`),
   getStats: () => api.get('/patient/stats'),
 };
 

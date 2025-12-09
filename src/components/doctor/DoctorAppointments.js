@@ -1,9 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { doctorAPI } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import LoadingSpinner from '../common/LoadingSpinner';
 import CompleteAppointment from './CompleteAppointment';
 import toast from 'react-hot-toast';
+
+const FILTERS = [
+  { value: 'today', labelKey: 'today_appointments' },
+  { value: 'upcoming', labelKey: 'upcoming_appointments' },
+  { value: 'all', labelKey: 'all_appointments' },
+];
+
+const statusMap = {
+  scheduled: { color: 'bg-yellow-100 text-yellow-800', labelKey: 'scheduled_appointments' },
+  completed: { color: 'bg-green-100 text-green-800', labelKey: 'completed_appointments' },
+  cancelled: { color: 'bg-red-100 text-red-800', labelKey: 'cancelled_appointments' },
+};
 
 const DoctorAppointments = () => {
   const [appointments, setAppointments] = useState([]);
@@ -13,16 +25,12 @@ const DoctorAppointments = () => {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showCompleteForm, setShowCompleteForm] = useState(false);
-  
+
   const { t, i18n } = useTranslation();
   const isRTL = i18n.language === 'ar';
 
-  useEffect(() => {
-    fetchAppointments();
-    // eslint-disable-next-line
-  }, [filter, selectedDate]);
-
-  const fetchAppointments = async () => {
+  // Memoize fetchAppointments to avoid unnecessary recreation
+  const fetchAppointments = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
@@ -35,29 +43,44 @@ const DoctorAppointments = () => {
         params.status = 'scheduled';
       }
       const response = await doctorAPI.getAppointments(params);
-      
-      // التأكد من أن appointments مصفوفة
-      const appointmentsData = response.data.data || response.data || [];
-      setAppointments(appointmentsData);
+      const appointmentsData = response.data?.data || response.data || [];
+      setAppointments(Array.isArray(appointmentsData) ? appointmentsData : []);
     } catch (error) {
-      console.error('Error fetching appointments:', error);
-      toast.error(t('error_loading_appointments'));
+      toast.error(
+        error?.response?.data?.message || t('error_loading_appointments') || 'Error loading appointments'
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, selectedDate, t]);
+
+  useEffect(() => {
+    fetchAppointments();
+    // Only runs when filter or selectedDate changes
+  }, [filter, selectedDate, fetchAppointments]);
+
+  // Accessible modal close handler
+  const closeCompleteForm = useCallback(() => {
+    setShowCompleteForm(false);
+    setSelectedAppointment(null);
+  }, []);
 
   const handleCancelAppointment = async (appointmentId) => {
-    const reason = prompt(t('enter_cancellation_reason'));
-    if (!reason) return;
-    
+    // Use modal for reason in production; fallback to prompt now for minimal disruption
+    let reason = '';
+    while (reason.trim() === '') {
+      reason = window.prompt(t('enter_cancellation_reason'), '');
+      if (reason === null) return; // Cancel pressed
+      if (reason.trim()) break;
+      toast.error(t('cancellation_reason_required') || 'Cancellation reason required');
+    }
     setCancelling(appointmentId);
     try {
-      await doctorAPI.cancelAppointment(appointmentId, reason);
-      toast.success(t('success_deleted'));
-      fetchAppointments();
+      const { data } = await doctorAPI.cancelAppointment(appointmentId, reason.trim());
+      toast.success(data?.message || t('success_deleted'));
+      await fetchAppointments();
     } catch (error) {
-      toast.error(error.response?.data?.message || t('error_updating_profile'));
+      toast.error(error?.response?.data?.message || t('error_updating_profile') || 'Error updating appointment');
     } finally {
       setCancelling(null);
     }
@@ -68,274 +91,315 @@ const DoctorAppointments = () => {
     setShowCompleteForm(true);
   };
 
-  const handleCompletionSuccess = () => {
-    setShowCompleteForm(false);
-    setSelectedAppointment(null);
+  const handleCompletionSuccess = useCallback(() => {
+    closeCompleteForm();
     fetchAppointments();
-  };
+  }, [closeCompleteForm, fetchAppointments]);
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'scheduled':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'completed':
-        return 'bg-green-100 text-green-800';
-      case 'cancelled':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
+  // Memoize for better perf
+  const getStatusColor = useCallback(status => statusMap[status]?.color || 'bg-gray-100 text-gray-800', []);
+  const getStatusText = useCallback(status => t(statusMap[status]?.labelKey) || status, [t]);
 
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'scheduled':
-        return t('scheduled_appointments');
-      case 'completed':
-        return t('completed_appointments');
-      case 'cancelled':
-        return t('cancelled_appointments');
-      default:
-        return status;
-    }
-  };
-
-  const formatDate = (dateString) => {
+  // Memoize to avoid recalculation on render
+  const formatDate = useCallback((dateString) => {
+    if (!dateString) return '';
     const date = new Date(dateString);
+    // Always use calendar days, with full formatting, localized
     return date.toLocaleDateString(i18n.language === 'ar' ? 'ar-EG' : 'en-US', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     });
+  }, [i18n.language]);
+
+  const formatTime = (timeStr) => {
+    // Expect time as "HH:mm" or null/undefined
+    if (!timeStr) return '--';
+    // Browser-safe time formatting
+    try {
+      const [hour, min] = timeStr.split(':');
+      const date = new Date();
+      date.setHours(+hour, +min, 0);
+      return date.toLocaleTimeString(i18n.language === 'ar' ? 'ar-EG' : 'en-US', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return timeStr;
+    }
   };
 
-  const isPastAppointment = (appointmentDate, appointmentTime) => {
-    const appointmentDateTime = new Date(`${appointmentDate}T${appointmentTime}`);
-    return appointmentDateTime < new Date();
-  };
+  const isPastAppointment = useCallback((appointmentDate, appointmentTime) => {
+    if (!appointmentDate || !appointmentTime) return false;
+    // Assumes appointmentTime is "HH:mm"
+    const iso = `${appointmentDate}T${appointmentTime}`;
+    // Handles potential timezone issues (may need adjustments based on backend)
+    const dt = new Date(iso);
+    return dt.getTime() < Date.now();
+  }, []);
 
+  const noAppointmentsMessage = useMemo(() => {
+    if (filter === 'today') return t('no_appointments_today');
+    if (selectedDate) return t('no_appointments_date');
+    return t('no_appointments_display');
+  }, [t, filter, selectedDate]);
+
+  // Helper for appointment patient fields (robust fallback)
+  const safePatient = patient => ({
+    name: patient?.name || <span className="text-gray-400">—</span>,
+    age: patient?.age ?? '--',
+    email: patient?.email || '--',
+    phone: patient?.phone || null
+  });
+
+  // Render
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-12">
+      <section className="flex justify-center items-center min-h-[40vh] py-12" aria-live="polite">
         <LoadingSpinner size="lg" />
-      </div>
+        <span className="sr-only">{t('loading')}</span>
+      </section>
     );
   }
 
   return (
-    <div className="px-2 py-2 sm:px-4 sm:py-4 md:px-8" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div
+      className="p-2 sm:p-4 md:p-8 max-w-5xl mx-auto"
+      dir={isRTL ? 'rtl' : 'ltr'}
+      aria-label={t('patient_appointments')}
+    >
       {/* Header */}
-      <div className={`flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-2 ${isRTL ? 'text-right' : 'text-left'}`}>
-        <h2 className="text-2xl font-bold text-gray-900 text-center sm:text-right">{t('patient_appointments')}</h2>
-      </div>
+      <header
+        className={`flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2 ${isRTL ? 'text-right' : 'text-left'}`}
+      >
+        <h2 className={`text-2xl md:text-3xl font-bold text-gray-900 text-center sm:text-${isRTL ? 'right' : 'left'} w-full`}>
+          {t('patient_appointments')}
+        </h2>
+      </header>
 
-      {/* الفلتر والتاريخ */}
-      <div className="card mb-6">
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-          {/* Filter buttons - wrapped horizontally for small screens */}
-          <div className="flex flex-col xs:flex-row xs:flex-wrap gap-2 flex-1 w-full">
-            {[
-              { value: 'today', label: t('today_appointments') },
-              { value: 'upcoming', label: t('upcoming_appointments') },
-              { value: 'all', label: t('all_appointments') },
-            ].map((option) => (
+      {/* Filters and date picker */}
+      <section className="card mb-6 px-4 py-3" aria-label={t('filter_appointments')}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* Filter buttons */}
+          <nav
+            aria-label={t('appointment_status_filters')}
+            className="flex flex-col gap-2 xs:flex-row w-full xs:w-auto"
+          >
+            {FILTERS.map(({ value, labelKey }) => (
               <button
-                key={option.value}
+                key={value}
+                type="button"
+                aria-pressed={filter === value && !selectedDate}
                 onClick={() => {
-                  setFilter(option.value);
+                  setFilter(value);
                   setSelectedDate('');
                 }}
-                className={`w-full xs:w-auto px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  filter === option.value && !selectedDate
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
+                className={`px-4 py-2 rounded-lg text-sm font-medium w-full xs:w-auto whitespace-nowrap transition-all duration-150 shadow focus:outline-none focus:ring-2
+                ${filter === value && !selectedDate
+                    ? 'bg-primary-600 text-white ring-2 ring-primary-400'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                tabIndex={0}
               >
-                {option.label}
+                {t(labelKey)}
               </button>
             ))}
-          </div>
-
-          {/* Responsive date input */}
-          <div className="w-full xs:w-auto sm:w-48">
+          </nav>
+          {/* Date picker */}
+          <div className="w-full xs:w-auto pt-1 sm:pt-0 sm:w-48">
+            <label htmlFor="appointment-date-filter" className="sr-only">
+              {t('filter_by_date')}
+            </label>
             <input
+              id="appointment-date-filter"
               type="date"
               value={selectedDate}
               onChange={(e) => {
                 setSelectedDate(e.target.value);
                 setFilter('all');
               }}
-              className="form-input w-full"
+              className="form-input w-full focus:ring-primary-400 max-w-xs"
+              aria-label={t('select_specific_date')}
+              min="1900-01-01"
+              max="2100-12-31"
             />
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* قائمة المواعيد */}
-      <div className="flex flex-col gap-4">
-        {appointments.map((appointment) => (
-          <div key={appointment._id} className="card p-4">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
-              {/* Appointment details */}
-              <div className="flex-1 min-w-0">
-                <div className={`flex flex-col sm:flex-row sm:items-start sm:justify-between mb-3 gap-2 ${isRTL ? 'text-right' : 'text-left'}`}>
-                  <div className={`flex items-start gap-3 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
-                    {/* صورة المريض (اختيارية) */}
-                    {appointment.patient?.profileImage && (
-                      <img 
-                        src={appointment.patient.profileImage} 
-                        alt={appointment.patient.name}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
-                    )}
-                    <div className={isRTL ? 'text-right' : 'text-left'}>
-                      <h3 className="text-lg font-semibold text-gray-900 truncate">
-                        {appointment.patient?.name}
-                      </h3>
-                      <div className={`flex items-center gap-2 mt-1 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
-                        <div className="flex items-center gap-1 text-primary-600 font-medium">
-                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                          </svg>
-                          <span>{appointment.patient?.age} {t('years')}</span>
-                        </div>
-                        {appointment.patient?.phone && (
-                          <>
-                            <span className="text-gray-300">•</span>
-                            <span className="text-gray-600 text-sm">
-                              {appointment.patient.phone}
+      {/* Appointments list */}
+      <section className="flex flex-col gap-5" aria-label={t('appointments_list')}>
+        {appointments.map((appointment) => {
+          const patient = safePatient(appointment.patient);
+          // useMemo for each item is overkill, keep inline for clarity
+          const showPastFlag = isPastAppointment(appointment.date, appointment.time) && appointment.status === 'scheduled';
+
+          return (
+            <article
+              key={appointment._id}
+              className="card p-3 sm:p-4 shadow-md hover:shadow-lg transition-shadow duration-300 rounded-xl border border-gray-100"
+              aria-labelledby={`appt-title-${appointment._id}`}
+              tabIndex={0}
+            >
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                {/* Details */}
+                <div className="flex-1 min-w-0">
+                  <div className={`flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 ${isRTL ? 'text-right' : 'text-left'}`}>
+                    <div className={`flex items-start gap-3 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <div className={isRTL ? 'text-right' : 'text-left'}>
+                        <h3
+                          id={`appt-title-${appointment._id}`}
+                          className="text-lg font-semibold text-gray-900 truncate max-w-[14ch] md:max-w-[24ch]"
+                        >
+                          {patient.name}
+                        </h3>
+                        <div className={`flex flex-wrap items-center gap-2 mt-1 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
+                          <span className="flex items-center gap-1 text-primary-600 font-medium">
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                              <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                            </svg>
+                            <span>
+                              {patient.age} {t('years')}
                             </span>
-                          </>
-                        )}
+                          </span>
+                          {patient.phone && (
+                            <>
+                              <span className="text-gray-300 hidden xs:inline" aria-hidden="true">•</span>
+                              <span className="text-gray-600 text-xs md:text-sm break-all" dir="ltr">
+                                <a href={`tel:${patient.phone}`} className="hover:underline">
+                                  {patient.phone}
+                                </a>
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  
-                  <div className={`flex items-center space-x-3 space-x-reverse mt-2 sm:mt-0 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(appointment.status)}`}>
-                      {getStatusText(appointment.status)}
-                    </span>
-                    {isPastAppointment(appointment.date, appointment.time) && appointment.status === 'scheduled' && (
-                      <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">
-                        منتهي
+                    <div className={`flex items-center space-x-2 space-x-reverse mt-3 sm:mt-0 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <span className={`px-3 py-1 rounded-full text-xs md:text-sm font-medium ${getStatusColor(appointment.status)}`}>
+                        {getStatusText(appointment.status)}
                       </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600 w-full ${isRTL ? 'text-right' : 'text-left'}`}>
-                  <div>
-                    <span className="font-medium">{t('appointment_date')}</span>{' '}
-                    {formatDate(appointment.date)}
-                  </div>
-                  <div>
-                    <span className="font-medium">{t('appointment_time')}</span> {appointment.time}
-                  </div>
-                  <div>
-                    <span className="font-medium">{t('patient_email')}</span>{' '}
-                    <span className="break-all">{appointment.patient?.email}</span>
-                  </div>
-                  <div>
-                    <span className="font-medium">{t('specialization')}</span>{' '}
-                    {appointment.specialization?.name}
-                  </div>
-                  {appointment.notes && (
-                    <div className="md:col-span-2">
-                      <span className="font-medium">{t('patient_notes')}</span>{' '}
-                      {appointment.notes}
+                      {showPastFlag && (
+                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded font-medium">
+                          {t('past_appointment') || 'منتهي'}
+                        </span>
+                      )}
                     </div>
-                  )}
-                  {appointment.cancellationReason && (
-                    <div className="md:col-span-2">
-                      <span className="font-medium">{t('cancellation_reason')}</span>{' '}
-                      {appointment.cancellationReason}
+                  </div>
+                  <div className={`grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-sm text-gray-600 w-full ${isRTL ? 'text-right' : 'text-left'}`}>
+                    <div>
+                      <strong>{t('appointment_date')}</strong>{' '}
+                      {formatDate(appointment.date)}
                     </div>
-                  )}
-                </div>
-
-                {/* Prescription (if any) */}
-                {appointment.status === 'completed' && appointment.prescription && (
-                  <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg overflow-x-auto">
-                    <h4 className="font-semibold text-green-900 mb-2">{t('prescription_medical')}</h4>
-                    <p className="text-green-800 whitespace-pre-wrap break-all">{appointment.prescription}</p>
-                    {appointment.notes && (
-                      <div className="mt-2">
-                        <h5 className="font-medium text-green-900 mb-1">{t('additional_notes_prescription')}</h5>
-                        <p className="text-green-700">{appointment.notes}</p>
+                    <div>
+                      <strong>{t('appointment_time')}</strong>{' '}
+                      {formatTime(appointment.time)}
+                    </div>
+                    <div>
+                      <strong>{t('patient_email')}</strong>{' '}
+                      <span className="break-all" dir="ltr">
+                        {patient.email}
+                      </span>
+                    </div>
+                    <div>
+                      <strong>{t('specialization')}</strong>{' '}
+                      {appointment.specialization?.name || '--'}
+                    </div>
+                    {!!appointment.notes && (
+                      <div className="sm:col-span-2 break-words">
+                        <strong>{t('patient_notes')}</strong>{' '}
+                        {appointment.notes}
                       </div>
                     )}
-                    {appointment.completedAt && (
-                      <p className="text-xs text-green-600 mt-2">
-                        {t('completed_at')} {new Date(appointment.completedAt).toLocaleString(i18n.language === 'ar' ? 'ar-EG' : 'en-US')}
-                      </p>
+                    {!!appointment.cancellationReason && (
+                      <div className="sm:col-span-2 break-words">
+                        <strong>{t('cancellation_reason')}</strong>{' '}
+                        {appointment.cancellationReason}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-
-              {/* Action buttons - stack vertically on small, row on large */}
-              <div className="mt-4 lg:mt-0 lg:mr-4 flex flex-row lg:flex-col gap-2 w-full lg:w-auto">
-                {appointment.status === 'scheduled' && !isPastAppointment(appointment.date, appointment.time) && (
-                  <>
-                    <button
-                      onClick={() => handleCompleteAppointment(appointment)}
-                      className="w-full lg:w-auto bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      {t('visit_completed')}
-                    </button>
-                    <button
-                      onClick={() => handleCancelAppointment(appointment._id)}
-                      disabled={cancelling === appointment._id}
-                      className="w-full lg:w-auto bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                    >
-                      {cancelling === appointment._id ? (
-                        <LoadingSpinner size="sm" />
-                      ) : (
-                        t('cancel_appointment')
+                  {/* Prescription (if any) */}
+                  {appointment.status === 'completed' && appointment.prescription && (
+                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg overflow-x-auto" aria-label={t('prescription_medical')}>
+                      <h4 className="font-semibold text-green-900 mb-2">{t('prescription_medical')}</h4>
+                      <p className="text-green-800 whitespace-pre-wrap break-all">{appointment.prescription}</p>
+                      {appointment.notes && (
+                        <div className="mt-2">
+                          <h5 className="font-medium text-green-900 mb-1">{t('additional_notes_prescription')}</h5>
+                          <p className="text-green-700">{appointment.notes}</p>
+                        </div>
                       )}
+                      {appointment.completedAt && (
+                        <p className="text-xs text-green-600 mt-2">
+                          {t('completed_at')} {new Date(appointment.completedAt).toLocaleString(i18n.language === 'ar' ? 'ar-EG' : 'en-US')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {/* Action buttons */}
+                <div className="w-full md:w-auto flex flex-row md:flex-col gap-2 mt-4 md:mt-0">
+                  {/* Scheduled and in the future */}
+                  {appointment.status === 'scheduled' && !isPastAppointment(appointment.date, appointment.time) && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleCompleteAppointment(appointment)}
+                        className="w-1/2 md:w-full bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-semibold transition-all"
+                        aria-label={t('visit_completed')}
+                      >
+                        {t('visit_completed')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCancelAppointment(appointment._id)}
+                        disabled={cancelling === appointment._id}
+                        className="w-1/2 md:w-full bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-60 flex justify-center items-center"
+                        aria-disabled={cancelling === appointment._id}
+                        aria-label={t('cancel_appointment')}
+                      >
+                        {cancelling === appointment._id ? (
+                          <LoadingSpinner size="sm" />
+                        ) : (
+                          t('cancel_appointment')
+                        )}
+                      </button>
+                    </>
+                  )}
+                  {/* Completed (edit/view prescription) */}
+                  {appointment.status === 'completed' && (
+                    <button
+                      type="button"
+                      onClick={() => handleCompleteAppointment(appointment)}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold transition-all"
+                      aria-label={t('view_edit_prescription')}
+                    >
+                      {t('view_edit_prescription')}
                     </button>
-                  </>
-                )}
-
-                {appointment.status === 'completed' && (
-                  <button
-                    onClick={() => handleCompleteAppointment(appointment)}
-                    className="w-full lg:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    {t('view_edit_prescription')}
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
-        ))}
-      </div>
+            </article>
+          );
+        })}
+      </section>
 
       {appointments.length === 0 && (
-        <div className="text-center py-12">
-          <div className="text-6xl mb-4">📅</div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            {t('no_appointments')}
-          </h3>
+        <section className="text-center py-16 px-2" aria-live="polite" aria-atomic="true">
+          <div className="text-6xl mb-4 select-none" aria-hidden="true">📅</div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{t('no_appointments')}</h3>
           <p className="text-gray-600">
-            {filter === 'today'
-              ? t('no_appointments_today')
-              : selectedDate
-              ? t('no_appointments_date')
-              : t('no_appointments_display')}
+            {noAppointmentsMessage}
           </p>
-        </div>
+        </section>
       )}
 
-      {/* نافذة إكمال الموعد */}
+      {/* Complete Appointment Modal */}
       {showCompleteForm && selectedAppointment && (
         <CompleteAppointment
           appointment={selectedAppointment}
-          onClose={() => {
-            setShowCompleteForm(false);
-            setSelectedAppointment(null);
-          }}
+          onClose={closeCompleteForm}
           onSuccess={handleCompletionSuccess}
         />
       )}

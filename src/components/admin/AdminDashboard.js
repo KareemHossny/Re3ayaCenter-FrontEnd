@@ -26,7 +26,7 @@ const AdminDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row md:justify-between md:items-center py-6 gap-4 md:gap-0">
             <div className={isRTL ? "text-right" : "text-left"}>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+              <h1 className="text-2xl sm:text-3xl font-bold text-primary-900">
                 {t('admin_dashboard')}
               </h1>
               <p className="text-gray-600 mt-1 text-base sm:text-lg">

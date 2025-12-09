@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { adminAPI, specializationAPI } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import LoadingSpinner from '../common/LoadingSpinner';
@@ -12,7 +12,8 @@ const UserManagement = () => {
   const [updating, setUpdating] = useState(null);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const [tableScroll, setTableScroll] = useState(false);
+
   const { t, i18n } = useTranslation();
   const isRTL = i18n.language === 'ar';
 
@@ -22,17 +23,28 @@ const UserManagement = () => {
     // eslint-disable-next-line
   }, []);
 
+  // Responsive table horizontal scroll detection
+  useEffect(() => {
+    const handleResize = () => {
+      setTableScroll(window.innerWidth < 700);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const fetchUsers = async () => {
+    setLoading(true);
     try {
       const response = await adminAPI.getUsers();
-      // Handle different response structures
-      const usersData = Array.isArray(response.data) ? response.data : 
-                       response.data?.users || response.data?.data || [];
+      const usersData = Array.isArray(response.data)
+        ? response.data
+        : response.data?.users || response.data?.data || [];
       setUsers(usersData);
     } catch (error) {
       console.error('Error fetching users:', error);
       toast.error(t('error_loading_users'));
-      setUsers([]); // Ensure it's always an array
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -41,33 +53,29 @@ const UserManagement = () => {
   const fetchSpecializations = async () => {
     try {
       const response = await specializationAPI.getSpecializations();
-      // Handle different response structures
-      const specializationsData = Array.isArray(response.data) ? response.data : 
-                                response.data?.specializations || response.data?.data || [];
+      const specializationsData = Array.isArray(response.data)
+        ? response.data
+        : response.data?.specializations || response.data?.data || [];
       setSpecializations(specializationsData);
     } catch (error) {
       console.error('Error fetching specializations:', error);
       toast.error(t('error_loading_specializations'));
-      setSpecializations([]); // Ensure it's always an array
+      setSpecializations([]);
     }
   };
 
   const handleRoleChange = async (userId, newRole) => {
-    if (!window.confirm(t('confirm_role_change', { role: getRoleText(newRole) }))) {
-      return;
-    }
-
+    if (!window.confirm(t('confirm_role_change', { role: getRoleText(newRole) }))) return;
     setUpdating(userId);
     try {
       await adminAPI.updateUserRole(userId, newRole);
-
       setUsers(prev => prev.map(user =>
         user._id === userId
           ? {
-            ...user,
-            role: newRole,
-            ...(newRole === 'patient' && { specialization: null, availability: [] })
-          }
+              ...user,
+              role: newRole,
+              ...(newRole === 'patient' && { specialization: null, availability: [] }),
+            }
           : user
       ));
       toast.success(t('role_changed_success', { role: getRoleText(newRole) }));
@@ -78,11 +86,12 @@ const UserManagement = () => {
     }
   };
 
-  // Placeholder for future API implementation
+  // Placeholder, adapt if backend supports specialization update.
   const handleSpecializationChange = async (userId, specializationId) => {
     toast.loading(t('updating_doctor_specialization'));
     setTimeout(() => {
       toast.success(t('specialization_update_coming_soon'));
+      toast.dismiss();
     }, 1000);
   };
 
@@ -104,185 +113,190 @@ const UserManagement = () => {
     return colors[role] || 'bg-gray-100 text-gray-800';
   };
 
-  const filteredUsers = users.filter(user => {
+  // Memoize filteredUsers for efficiency
+  const filteredUsers = useMemo(() => users.filter(user => {
     const matchesFilter = filter === 'all' || user.role === filter;
+    const term = searchTerm.toLowerCase();
     const matchesSearch =
-      (user.name && user.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase()));
+      (user.name && user.name.toLowerCase().includes(term)) ||
+      (user.email && user.email.toLowerCase().includes(term));
     return matchesFilter && matchesSearch;
-  });
+  }), [users, filter, searchTerm]);
 
+  // Responsive header + info
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-16 h-[50vh]">
+      <div className="flex justify-center items-center py-24 min-h-[40vh]">
         <LoadingSpinner size="lg" />
       </div>
     );
   }
 
   return (
-    <div className="px-2 md:px-6 py-2 space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4 ${isRTL ? 'text-right' : 'text-left'}`}>
-        <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 leading-snug">
+    <div className="px-1 sm:px-2 md:px-6 py-2 space-y-6 max-w-screen-2xl mx-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+      {/* Header & quick info */}
+      <div className={`flex flex-col-reverse sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 ${isRTL ? 'text-right' : 'text-left'}`}>
+        <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-gray-900 leading-tight">
           {t('user_management')}
         </h2>
-        <div className="text-sm text-gray-600 bg-gray-100 rounded px-3 py-1">
-          {t('total_users')}: <span className="font-bold">{users.length}</span>
-        </div>
-      </div>
-
-      {/* الفلتر والبحث */}
-      <div className="card mb-6 p-4 bg-white border border-gray-100 shadow-sm rounded-2xl">
-        <div className="flex flex-col sm:flex-row gap-4 w-full">
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder={t('search_users_placeholder')}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="form-input w-full rounded-md border-gray-200 focus:ring-primary-500 focus:border-primary-400 transition-all"
-            />
-          </div>
-          <div className="w-full sm:w-48">
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="form-input w-full rounded-md border-gray-200 focus:ring-primary-500 focus:border-primary-400 transition-all"
-            >
-              <option value="all">{t('all_roles')}</option>
-              <option value="patient">{t('patients')}</option>
-              <option value="doctor">{t('doctors')}</option>
-              <option value="admin">{t('admins')}</option>
-            </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-xs sm:text-sm text-gray-600 bg-gray-100 rounded px-3 py-1 font-medium">
+            {t('total_users')}: <span className="font-bold">{users.length}</span>
           </div>
         </div>
       </div>
 
-      {/* جدول المستخدمين */}
-      <div className="card bg-white border border-gray-100 shadow-md rounded-2xl overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-3 md:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                {t('user')}
-              </th>
-              <th className="px-3 md:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                {t('email')}
-              </th>
-              <th className="px-3 md:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                {t('role')}
-              </th>
-              <th className="px-3 md:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                {t('specialization')}
-              </th>
-              <th className="px-3 md:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                {t('actions')}
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-100">
-            {filteredUsers.map((user) => (
-              <tr key={user._id} className="hover:bg-primary-50 transition-colors">
-                <td className="px-3 md:px-6 py-3 min-w-[180px] whitespace-nowrap">
-                  <div className={`flex items-center gap-3 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
-                    <div className="flex-shrink-0 w-10 h-10 bg-primary-50 rounded-full flex items-center justify-center overflow-hidden shadow-sm border border-primary-100">
-                      {user.role === 'doctor' ? (
-                        <span className="text-lg">🥼</span>
-                      ) : user.role === 'admin' ? (
-                        <ShieldCheckIcon className="h-6 w-6 text-primary-600" />
-                      ) : (
-                        <UserIcon className="h-6 w-6 text-primary-500" />
+      {/* Filter & search */}
+      <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-2 sm:p-3 md:p-4 mb-2 flex flex-col sm:flex-row sm:items-center gap-3">
+        <input
+          type="text"
+          placeholder={t('search_users_placeholder')}
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          className="form-input w-full sm:w-auto flex-1 min-w-0 rounded-md border-gray-200 focus:ring-primary-500 focus:border-primary-400 text-xs sm:text-sm transition-all"
+          autoFocus
+        />
+        <select
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          className="form-input w-full sm:w-auto sm:min-w-[160px] rounded-md border-gray-200 focus:ring-primary-500 focus:border-primary-400 text-xs sm:text-sm transition-all"
+        >
+          <option value="all">{t('all_roles')}</option>
+          <option value="patient">{t('patients')}</option>
+          <option value="doctor">{t('doctors')}</option>
+          <option value="admin">{t('admins')}</option>
+        </select>
+      </div>
+
+      {/* User table or list */}
+      <div
+        className={
+          `bg-white border border-gray-100 shadow-md rounded-2xl ${tableScroll ? 'overflow-x-auto scrollbar-thin scrollbar-thumb-gray-200' : 'overflow-visible'}`
+        }
+      >
+        {filteredUsers.length > 0 ? (
+          <table className="min-w-[540px] w-full divide-y divide-gray-200 text-xs sm:text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-2 sm:px-4 py-3 font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('user')}</th>
+                <th className="px-2 sm:px-4 py-3 font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('email')}</th>
+                <th className="px-2 sm:px-4 py-3 font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('role')}</th>
+                <th className="px-2 sm:px-4 py-3 font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('specialization')}</th>
+                <th className="px-2 sm:px-4 py-3 font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{t('actions')}</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {filteredUsers.map(user => (
+                <tr key={user._id} className="hover:bg-primary-50 group transition-colors">
+                  {/* User Info */}
+                  <td className="px-2 sm:px-4 py-3 min-w-[140px]">
+                    <div className={`flex items-center gap-2 sm:gap-3 ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 bg-primary-50 rounded-full flex items-center justify-center shadow-sm border border-primary-100 overflow-hidden">
+                        {user.role === 'doctor' ? (
+                          <span className="text-lg">🥼</span>
+                        ) : user.role === 'admin' ? (
+                          <ShieldCheckIcon className="h-5 w-5 sm:h-6 sm:w-6 text-primary-600" />
+                        ) : (
+                          <UserIcon className="h-5 w-5 sm:h-6 sm:w-6 text-primary-500" />
+                        )}
+                      </div>
+                      <div className={isRTL ? 'text-right' : 'text-left'}>
+                        <div className="font-semibold text-gray-900 truncate max-w-[120px] sm:max-w-[160px]" title={user.name}>{user.name}</div>
+                        <div className="text-xs text-gray-500">{user.phone || t('none')}</div>
+                      </div>
+                    </div>
+                  </td>
+
+                  {/* Email */}
+                  <td className="px-2 sm:px-4 py-3 min-w-[140px]">
+                    <div className="break-all">{user.email}</div>
+                  </td>
+
+                  {/* Role */}
+                  <td className="px-2 sm:px-4 py-3">
+                    <span className={`inline-flex min-w-[46px] justify-center px-2 py-1 font-bold rounded-full text-xxs sm:text-xs ${getRoleColor(user.role)}`}>
+                      {getRoleText(user.role)}
+                    </span>
+                  </td>
+
+                  {/* Specialization */}
+                  <td className="px-2 sm:px-4 py-3 text-gray-900">
+                    {user.specialization?.name
+                      ? <span className="truncate max-w-[110px] sm:max-w-[180px]" title={user.specialization?.name}>{user.specialization?.name}</span>
+                      : <span className="text-gray-400">---</span>
+                    }
+                  </td>
+
+                  {/* Actions */}
+                  <td className="px-2 sm:px-4 py-3 w-full">
+                    <div className={`flex flex-col xs:flex-row gap-2 items-stretch xs:items-center ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <select
+                        value={user.role}
+                        onChange={e => handleRoleChange(user._id, e.target.value)}
+                        disabled={updating === user._id}
+                        className={`text-xs sm:text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-primary-500 disabled:opacity-60 transition w-full xs:w-auto`}
+                        aria-label={t('role')}
+                      >
+                        <option value="patient">{t('patient')}</option>
+                        <option value="doctor">{t('doctor')}</option>
+                        <option value="admin">{t('admin')}</option>
+                      </select>
+                      {user.role === 'doctor' && (
+                        <select
+                          value={user.specialization?._id || ''}
+                          onChange={e => handleSpecializationChange(user._id, e.target.value)}
+                          className={`text-xs sm:text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-primary-500 transition w-full xs:w-auto`}
+                          aria-label={t('specialization')}
+                        >
+                          <option value="">{t('choose_specialization')}</option>
+                          {Array.isArray(specializations) &&
+                            specializations.map(spec => (
+                              <option key={spec._id} value={spec._id}>{spec.name}</option>
+                            ))
+                          }
+                        </select>
                       )}
                     </div>
-                    <div className={isRTL ? 'text-right' : 'text-left'}>
-                      <div className="text-sm md:text-base font-semibold text-gray-900 break-all">{user.name}</div>
-                      <div className="text-xs text-gray-500">{user.phone || t('none')}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-3 md:px-6 py-3 whitespace-nowrap">
-                  <div className="text-xs md:text-sm text-gray-800 break-all">{user.email}</div>
-                </td>
-                <td className="px-3 md:px-6 py-3 whitespace-nowrap">
-                  <span className={`inline-flex min-w-[56px] justify-center px-2 py-1 text-xs font-bold rounded-full ${getRoleColor(user.role)}`}>
-                    {getRoleText(user.role)}
-                  </span>
-                </td>
-                <td className="px-3 md:px-6 py-3 whitespace-nowrap text-xs md:text-sm text-gray-900">
-                  {user.specialization?.name || <span className="text-gray-400">---</span>}
-                </td>
-                <td className="px-3 md:px-6 py-3 whitespace-nowrap">
-                  <div className={`flex flex-col 2xs:flex-row gap-2 w-full ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
-                    <select
-                      value={user.role}
-                      onChange={(e) => handleRoleChange(user._id, e.target.value)}
-                      disabled={updating === user._id}
-                      className="text-xs md:text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-primary-500 disabled:opacity-60"
-                    >
-                      <option value="patient">{t('patient')}</option>
-                      <option value="doctor">{t('doctor')}</option>
-                      <option value="admin">{t('admin')}</option>
-                    </select>
-                    {user.role === 'doctor' && (
-                      <select
-                        value={user.specialization?._id || ''}
-                        onChange={(e) => handleSpecializationChange(user._id, e.target.value)}
-                        className="text-xs md:text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-primary-500"
-                      >
-                        <option value="">{t('choose_specialization')}</option>
-                        {/* Safe array mapping */}
-                        {Array.isArray(specializations) && specializations.map((spec) => (
-                          <option key={spec._id} value={spec._id}>
-                            {spec.name}
-                          </option>
-                        ))}
-                      </select>
+                    {updating === user._id && (
+                      <div className="mt-1">
+                        <LoadingSpinner size="sm" />
+                      </div>
                     )}
-                  </div>
-                  {updating === user._id && (
-                    <div className="mt-1">
-                      <LoadingSpinner size="sm" />
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {filteredUsers.length === 0 && (
-          <div className="text-center py-12">
-            <div className="text-5xl mb-3">🔍</div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {t('no_results')}
-            </h3>
-            <p className="text-gray-600">
-              {searchTerm
-                ? t('no_users_found')
-                : t('no_users_available')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-12 min-h-[200px]">
+            <div className="text-5xl mb-2">🔍</div>
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">{t('no_results')}</h3>
+            <p className="text-gray-600 text-xs sm:text-sm">
+              {searchTerm ? t('no_users_found') : t('no_users_available')}
             </p>
           </div>
         )}
       </div>
 
-      {/* إحصائيات سريعة */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-        <div className="card text-center bg-blue-50 border border-blue-100 rounded-2xl shadow-sm py-4">
-          <div className="text-2xl font-extrabold text-blue-600 mb-1">
+      {/* Quick statistics */}
+      <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 gap-4 mt-6">
+        <div className="bg-blue-50 border border-blue-100 rounded-2xl shadow-sm px-4 py-4 flex flex-col items-center">
+          <span className="text-xl sm:text-2xl font-extrabold text-blue-600 mb-0.5">
             {users.filter(u => u.role === 'patient').length}
-          </div>
-          <div className="text-sm text-gray-700">{t('patient')}</div>
+          </span>
+          <span className="text-xs sm:text-sm text-gray-700">{t('patient')}</span>
         </div>
-        <div className="card text-center bg-green-50 border border-green-100 rounded-2xl shadow-sm py-4">
-          <div className="text-2xl font-extrabold text-green-600 mb-1">
+        <div className="bg-green-50 border border-green-100 rounded-2xl shadow-sm px-4 py-4 flex flex-col items-center">
+          <span className="text-xl sm:text-2xl font-extrabold text-green-600 mb-0.5">
             {users.filter(u => u.role === 'doctor').length}
-          </div>
-          <div className="text-sm text-gray-700">{t('doctor')}</div>
+          </span>
+          <span className="text-xs sm:text-sm text-gray-700">{t('doctor')}</span>
         </div>
-        <div className="card text-center bg-purple-50 border border-purple-100 rounded-2xl shadow-sm py-4">
-          <div className="text-2xl font-extrabold text-purple-600 mb-1">
+        <div className="bg-purple-50 border border-purple-100 rounded-2xl shadow-sm px-4 py-4 flex flex-col items-center">
+          <span className="text-xl sm:text-2xl font-extrabold text-purple-600 mb-0.5">
             {users.filter(u => u.role === 'admin').length}
-          </div>
-          <div className="text-sm text-gray-700">{t('admin')}</div>
+          </span>
+          <span className="text-xs sm:text-sm text-gray-700">{t('admin')}</span>
         </div>
       </div>
     </div>
