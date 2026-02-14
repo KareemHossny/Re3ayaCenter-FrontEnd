@@ -7,8 +7,6 @@ import toast from 'react-hot-toast';
 
 const AppointmentBooking = ({ doctor, onClose, onSuccess }) => {
   const [availableSlots, setAvailableSlots] = useState([]);
-  const [bookedSlots, setBookedSlots] = useState([]);
-  const [allSlots, setAllSlots] = useState([]);
   const [loading, setLoading] = useState(false);
   const [booking, setBooking] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
@@ -39,25 +37,12 @@ const AppointmentBooking = ({ doctor, onClose, onSuccess }) => {
     setLoading(true);
     try {
       const { data } = await patientAPI.getAvailableSlots(doctor._id, selectedDate);
-      if (Array.isArray(data)) {
-        setAvailableSlots(data);
-        setBookedSlots([]);
-        setAllSlots(data);
-      } else {
-        const available = Array.isArray(data?.availableSlots) ? data.availableSlots : [];
-        const booked = Array.isArray(data?.bookedSlots) ? data.bookedSlots : [];
-        const all = Array.isArray(data?.allSlots) ? data.allSlots : available;
-        setAvailableSlots(available);
-        setBookedSlots(booked);
-        setAllSlots(all);
-      }
+      setAvailableSlots(Array.isArray(data) ? data : []);
       setSelectedTime('');
     } catch (error) {
       console.error('Error fetching available slots:', error);
       toast.error(t('error_loading_slots'));
       setAvailableSlots([]);
-      setBookedSlots([]);
-      setAllSlots([]);
     } finally {
       setLoading(false);
     }
@@ -177,32 +162,20 @@ const AppointmentBooking = ({ doctor, onClose, onSuccess }) => {
                 <div className="flex justify-center py-4">
                   <LoadingSpinner size="md" />
                 </div>
-              ) : allSlots.length > 0 ? (
+              ) : availableSlots.length > 0 ? (
                 <div className={slotGridClass}>
-                  {allSlots.map((slot) => {
-                    const isBooked = bookedSlots.includes(slot);
-                    const isSelected = selectedTime === slot;
-                    return (
+                  {availableSlots.map((slot) => (
                     <button
                       type="button"
                       key={slot}
-                      onClick={() => !isBooked && setSelectedTime(slot)}
-                      disabled={isBooked}
-                      className={`${slotBtnBase} ${
-                        isBooked
-                          ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                          : isSelected
-                          ? slotBtnSelected
-                          : slotBtnUnselected
-                      }`}
-                      aria-pressed={isSelected}
-                      aria-disabled={isBooked}
+                      onClick={() => setSelectedTime(slot)}
+                      className={`${slotBtnBase} ${selectedTime === slot ? slotBtnSelected : slotBtnUnselected}`}
+                      aria-pressed={selectedTime === slot}
                       tabIndex={0}
                     >
                       {slot}
                     </button>
-                    );
-                  })}
+                  ))}
                 </div>
               ) : (
                 <p className="text-center text-gray-400 py-3 text-sm sm:text-base">

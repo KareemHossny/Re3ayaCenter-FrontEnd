@@ -48,7 +48,7 @@ export const adminAPI = {
 
 export const doctorAPI = {
   getProfile: () => api.get('/doctor/profile'),
-  updateProfile: (data) => api.put('/doctor/profile', data), // تستخدم للتحديث الشامل
+  updateProfile: (data) => api.put('/doctor/profile', data), 
   getAppointments: (params) => api.get('/doctor/appointments', { params }),
   cancelAppointment: (appointmentId, reason) => 
     api.put(`/doctor/appointments/${appointmentId}/cancel`, { cancellationReason: reason }),
@@ -61,18 +61,10 @@ export const doctorAPI = {
   getSchedule: (params) => api.get('/doctor/schedule', { params }),
   
 saveSchedule: (data) => {
-    console.log('🚀 [API] إرسال بيانات الجدول إلى السيرفر:');
-    console.log('- البيانات الأصلية:', data);
-    console.log('- availableTimes:', data.availableTimes);
-    console.log('- النوع:', typeof data.availableTimes);
-    console.log('- هل مصفوفة؟', Array.isArray(data.availableTimes));
-    
-    // 🔴 **لا تقم بأي معالجة للبيانات هنا!**
-    // فقط أرسلها كما هي
     const requestData = {
       date: data.date,
       isWorkingDay: data.isWorkingDay,
-      availableTimes: data.availableTimes  // أرسلها كما هي
+      availableTimes: data.availableTimes 
     };
     
     console.log('📤 البيانات المرسلة بدون تعديل:', JSON.stringify(requestData, null, 2));
